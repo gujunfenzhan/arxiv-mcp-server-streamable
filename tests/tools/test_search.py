@@ -41,7 +41,7 @@ async def test_search_with_categories(mock_client):
 @pytest.mark.asyncio
 async def test_search_with_dates():
     """Test paper search with date filtering uses raw API."""
-    mock_xml_response = '''<?xml version="1.0" encoding="UTF-8"?>
+    mock_xml_response = """<?xml version="1.0" encoding="UTF-8"?>
     <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
         <entry>
             <id>http://arxiv.org/abs/2301.00001v1</id>
@@ -52,19 +52,19 @@ async def test_search_with_dates():
             <arxiv:primary_category term="cs.AI"/>
             <link title="pdf" href="http://arxiv.org/pdf/2301.00001v1"/>
         </entry>
-    </feed>'''
-    
+    </feed>"""
+
     mock_response = MagicMock()
     mock_response.text = mock_xml_response
     mock_response.raise_for_status = MagicMock()
-    
+
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client_class.return_value = mock_client
-        
+
         result = await handle_search(
             {
                 "query": "test query",
@@ -102,7 +102,7 @@ def test_validate_categories():
 
 def test_parse_arxiv_atom_response():
     """Test parsing of arXiv Atom XML response."""
-    sample_xml = '''<?xml version="1.0" encoding="UTF-8"?>
+    sample_xml = """<?xml version="1.0" encoding="UTF-8"?>
     <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
         <entry>
             <id>http://arxiv.org/abs/2301.00001v1</id>
@@ -116,8 +116,8 @@ def test_parse_arxiv_atom_response():
             <category term="cs.LG"/>
             <link title="pdf" href="http://arxiv.org/pdf/2301.00001v1"/>
         </entry>
-    </feed>'''
-    
+    </feed>"""
+
     results = _parse_arxiv_atom_response(sample_xml)
     assert len(results) == 1
     paper = results[0]
@@ -133,21 +133,21 @@ def test_parse_arxiv_atom_response():
 async def test_raw_arxiv_search_builds_correct_url():
     """Test that raw search builds correct URL with date filters."""
     import httpx
-    
+
     # Mock the httpx client
     mock_response = MagicMock()
-    mock_response.text = '''<?xml version="1.0" encoding="UTF-8"?>
+    mock_response.text = """<?xml version="1.0" encoding="UTF-8"?>
     <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
-    </feed>'''
+    </feed>"""
     mock_response.raise_for_status = MagicMock()
-    
+
     with patch("httpx.AsyncClient") as mock_client_class:
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client_class.return_value = mock_client
-        
+
         await _raw_arxiv_search(
             query="LLM",
             max_results=5,
@@ -155,7 +155,7 @@ async def test_raw_arxiv_search_builds_correct_url():
             date_to="2023-12-31",
             categories=["cs.AI"],
         )
-        
+
         # Check that the URL was constructed with unencoded +TO+
         call_args = mock_client.get.call_args
         url = call_args[0][0]

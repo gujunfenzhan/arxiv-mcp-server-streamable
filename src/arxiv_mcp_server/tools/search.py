@@ -48,6 +48,7 @@ VALID_CATEGORIES = {
     "quant-ph",
 }
 
+
 async def _raw_arxiv_search(
     query: str,
     max_results: int = 10,
@@ -58,22 +59,22 @@ async def _raw_arxiv_search(
 ) -> List[Dict[str, Any]]:
     """
     Perform arXiv search using raw HTTP requests.
-    
+
     This bypasses the arxiv Python package to avoid URL encoding issues
     with date filters. The arxiv package encodes '+' as '%2B' which breaks
     the submittedDate:[YYYYMMDD+TO+YYYYMMDD] syntax.
     """
     # Build query components
     query_parts = []
-    
+
     if query.strip():
         query_parts.append(f"({query})")
-    
+
     # Add category filtering
     if categories:
         category_filter = " OR ".join(f"cat:{cat}" for cat in categories)
         query_parts.append(f"({category_filter})")
-    
+
     # Add date filtering using arXiv API syntax
     if date_from or date_to:
         try:
@@ -81,12 +82,12 @@ async def _raw_arxiv_search(
                 start_date = parser.parse(date_from).strftime("%Y%m%d0000")
             else:
                 start_date = "199107010000"  # arXiv started July 1991
-            
+
             if date_to:
                 end_date = parser.parse(date_to).strftime("%Y%m%d2359")
             else:
                 end_date = datetime.now().strftime("%Y%m%d2359")
-            
+
             # CRITICAL: This must NOT be URL-encoded. The '+' in '+TO+' must remain literal.
             date_filter = f"submittedDate:[{start_date}+TO+{end_date}]"
             query_parts.append(date_filter)
@@ -94,40 +95,42 @@ async def _raw_arxiv_search(
         except (ValueError, TypeError) as e:
             logger.error(f"Error parsing dates: {e}")
             raise ValueError(f"Invalid date format. Use YYYY-MM-DD format: {e}")
-    
+
     if not query_parts:
         raise ValueError("No search criteria provided")
-    
+
     # Combine query parts with AND (space in arXiv = AND)
     final_query = " AND ".join(query_parts)
     logger.debug(f"Raw API query: {final_query}")
-    
+
     # Map sort parameter to arXiv API values
     sort_map = {
         "relevance": "relevance",
         "date": "submittedDate",
     }
     sort_order = "descending"
-    
+
     # Build the URL manually to avoid encoding the '+' in date ranges
     # We encode most parameters but carefully preserve '+TO+' in date filters
     base_params = f"max_results={max_results}&sortBy={sort_map.get(sort_by, 'relevance')}&sortOrder={sort_order}"
-    
+
     # Manually construct search_query parameter
     # We need to encode spaces and special chars BUT NOT the '+' in '+TO+'
     # Strategy: encode the query parts separately, then join with encoded AND
-    encoded_query = final_query.replace(" AND ", "+AND+").replace(" OR ", "+OR+").replace(" ", "+")
+    encoded_query = (
+        final_query.replace(" AND ", "+AND+").replace(" OR ", "+OR+").replace(" ", "+")
+    )
     # But we need to be careful about existing '+TO+' - it should stay as-is
     # Since we built the date filter with literal '+TO+', it's already correct
-    
+
     url = f"{ARXIV_API_URL}?search_query={encoded_query}&{base_params}"
     logger.debug(f"Raw API URL: {url}")
-    
+
     # Make the request
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(url)
         response.raise_for_status()
-    
+
     # Parse the Atom XML response
     return _parse_arxiv_atom_response(response.text)
 
@@ -135,36 +138,44 @@ async def _raw_arxiv_search(
 def _parse_arxiv_atom_response(xml_text: str) -> List[Dict[str, Any]]:
     """Parse arXiv Atom XML response into paper dictionaries."""
     results = []
-    
+
     try:
         root = ET.fromstring(xml_text)
-        
+
         for entry in root.findall("atom:entry", ARXIV_NS):
             # Extract paper ID from the id URL
             id_elem = entry.find("atom:id", ARXIV_NS)
             if id_elem is None or id_elem.text is None:
                 continue
-            
+
             # ID format: http://arxiv.org/abs/XXXX.XXXXX or http://arxiv.org/abs/category/XXXXXXX
             paper_id = id_elem.text.split("/abs/")[-1]
             # Remove version suffix for short ID
             short_id = paper_id.split("v")[0] if "v" in paper_id else paper_id
-            
+
             # Title
             title_elem = entry.find("atom:title", ARXIV_NS)
-            title = title_elem.text.strip().replace("\n", " ") if title_elem is not None and title_elem.text else ""
-            
+            title = (
+                title_elem.text.strip().replace("\n", " ")
+                if title_elem is not None and title_elem.text
+                else ""
+            )
+
             # Authors
             authors = []
             for author in entry.findall("atom:author", ARXIV_NS):
                 name_elem = author.find("atom:name", ARXIV_NS)
                 if name_elem is not None and name_elem.text:
                     authors.append(name_elem.text)
-            
+
             # Abstract/Summary
             summary_elem = entry.find("atom:summary", ARXIV_NS)
-            abstract = summary_elem.text.strip().replace("\n", " ") if summary_elem is not None and summary_elem.text else ""
-            
+            abstract = (
+                summary_elem.text.strip().replace("\n", " ")
+                if summary_elem is not None and summary_elem.text
+                else ""
+            )
+
             # Categories
             categories = []
             for cat in entry.findall("arxiv:primary_category", ARXIV_NS):
@@ -175,11 +186,15 @@ def _parse_arxiv_atom_response(xml_text: str) -> List[Dict[str, Any]]:
                 term = cat.get("term")
                 if term and term not in categories:
                     categories.append(term)
-            
+
             # Published date
             published_elem = entry.find("atom:published", ARXIV_NS)
-            published = published_elem.text if published_elem is not None and published_elem.text else ""
-            
+            published = (
+                published_elem.text
+                if published_elem is not None and published_elem.text
+                else ""
+            )
+
             # PDF URL
             pdf_url = None
             for link in entry.findall("atom:link", ARXIV_NS):
@@ -188,22 +203,24 @@ def _parse_arxiv_atom_response(xml_text: str) -> List[Dict[str, Any]]:
                     break
             if not pdf_url:
                 pdf_url = f"http://arxiv.org/pdf/{paper_id}"
-            
-            results.append({
-                "id": short_id,
-                "title": title,
-                "authors": authors,
-                "abstract": abstract,
-                "categories": categories,
-                "published": published,
-                "url": pdf_url,
-                "resource_uri": f"arxiv://{short_id}",
-            })
-    
+
+            results.append(
+                {
+                    "id": short_id,
+                    "title": title,
+                    "authors": authors,
+                    "abstract": abstract,
+                    "categories": categories,
+                    "published": published,
+                    "url": pdf_url,
+                    "resource_uri": f"arxiv://{short_id}",
+                }
+            )
+
     except ET.ParseError as e:
         logger.error(f"Failed to parse arXiv XML response: {e}")
         raise ValueError(f"Failed to parse arXiv API response: {e}")
-    
+
     return results
 
 
@@ -347,7 +364,7 @@ def _process_paper(paper: arxiv.Result) -> Dict[str, Any]:
 
 async def handle_search(arguments: Dict[str, Any]) -> List[types.TextContent]:
     """Handle paper search requests with improved arXiv API integration.
-    
+
     Uses raw HTTP requests when date filtering is requested to avoid URL encoding
     issues with the arxiv Python package. Falls back to the arxiv package for
     non-date queries for better compatibility.
@@ -376,10 +393,14 @@ async def handle_search(arguments: Dict[str, Any]) -> List[types.TextContent]:
         # Use raw HTTP API when date filtering is requested
         # This bypasses the arxiv package's URL encoding which breaks date syntax
         if date_from_arg or date_to_arg:
-            logger.debug(f"Date filtering requested - using raw API: {date_from_arg} to {date_to_arg}")
-            
+            logger.debug(
+                f"Date filtering requested - using raw API: {date_from_arg} to {date_to_arg}"
+            )
+
             try:
-                optimized_query = _optimize_query(base_query) if base_query.strip() else ""
+                optimized_query = (
+                    _optimize_query(base_query) if base_query.strip() else ""
+                )
                 results = await _raw_arxiv_search(
                     query=optimized_query,
                     max_results=max_results,
@@ -388,23 +409,27 @@ async def handle_search(arguments: Dict[str, Any]) -> List[types.TextContent]:
                     date_to=date_to_arg,
                     categories=categories,
                 )
-                
-                logger.info(f"Raw API search completed: {len(results)} results returned")
+
+                logger.info(
+                    f"Raw API search completed: {len(results)} results returned"
+                )
                 response_data = {"total_results": len(results), "papers": results}
-                
+
                 return [
-                    types.TextContent(type="text", text=json.dumps(response_data, indent=2))
+                    types.TextContent(
+                        type="text", text=json.dumps(response_data, indent=2)
+                    )
                 ]
-            
+
             except httpx.HTTPStatusError as e:
                 logger.error(f"arXiv API HTTP error: {e}")
                 return [
-                    types.TextContent(type="text", text=f"Error: arXiv API HTTP error - {str(e)}")
+                    types.TextContent(
+                        type="text", text=f"Error: arXiv API HTTP error - {str(e)}"
+                    )
                 ]
             except ValueError as e:
-                return [
-                    types.TextContent(type="text", text=f"Error: {str(e)}")
-                ]
+                return [types.TextContent(type="text", text=f"Error: {str(e)}")]
 
         # For non-date queries, use the arxiv package (more robust parsing)
         client = arxiv.Client()
