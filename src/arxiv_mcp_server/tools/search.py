@@ -15,7 +15,8 @@ logger = logging.getLogger("arxiv-mcp-server")
 settings = Settings()
 
 # arXiv API endpoint for raw queries (bypasses arxiv package URL encoding issues)
-ARXIV_API_URL = "http://export.arxiv.org/api/query"
+# Use HTTPS to avoid redirect from http -> https
+ARXIV_API_URL = "https://export.arxiv.org/api/query"
 
 # XML namespaces used in arXiv Atom feed
 ARXIV_NS = {
