@@ -2,6 +2,8 @@
 Arxiv MCP Server - Streamable HTTP version  
 """
 from typing import Literal
+
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 import logging
 from typing import Dict, Any, List
@@ -19,11 +21,21 @@ mcp = FastMCP(
     name=settings.APP_NAME,
     stateless_http=True,  # Recommended for production
     json_response=True,   # Recommended for scalability
+
 )
 
-def main(host: str, port: int):
+def main(host: str, port: int, allow_all_hosts: bool = False, disable_dns_protection: bool = False):
     mcp.settings.host = host
     mcp.settings.port = port
+
+    if allow_all_hosts:
+        mcp.settings.transport_security.allowed_hosts = ["*:*"]
+        mcp.settings.transport_security.allowed_origins = ["*"]
+        logger.warning("Allow all Host headers. This is only applicable to development and testing environments!")
+    if disable_dns_protection:
+        mcp.settings.transport_security.enable_dns_rebinding_protection = False
+        logger.warning("Turn off DNS anti-hijacking protection. This is only applicable to development and testing environments!")
+
     mcp.run(transport="streamable-http")
 
 
