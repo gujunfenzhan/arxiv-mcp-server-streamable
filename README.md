@@ -99,6 +99,11 @@ For Development:
 }
 ```
 
+### streamable MCP
+```bash
+arxiv-mcp-server --mode streaming --host 127.0.0.1 --port 8856
+```
+
 ## 💡 Available Tools
 
 The server provides four main tools:
